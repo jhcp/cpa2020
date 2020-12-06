@@ -1,0 +1,164 @@
+---
+# Setup the file output settings
+title: Relatório Sintético de Curso - Autoavaliação UFRPE 2020
+output: 
+  html_document:
+    toc: yes  # toc means table of contents
+    toc_depth: 2
+    toc_float: yes
+    theme: spacelab
+    number_sections: true
+    css: styles-curso.css
+    self_contained: true
+    mathjax: null  # mathjax is used to display mathematical formula (latex), which is not necessary here, thus null
+---
+
+
+```{r echo=FALSE}
+# Prevents the display of the source code, messages and warnings onto the HTML file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+
+qtd_respondentes <- respostas_curso$total_respondentes[[1]]
+qtd_universo <- respostas_curso$total[[1]]
+qtd_pessimo <- sum(respostas_curso$pessimo)
+qtd_ruim <- sum(respostas_curso$ruim)
+qtd_regular <- sum(respostas_curso$regular)
+qtd_bom <- sum(respostas_curso$bom)
+qtd_excelente <- sum(respostas_curso$excelente)
+qtd_OOR <- sum(respostas_curso$oor)
+total_respostas <- qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+pct_pessimo <- round(qtd_pessimo*100 / total_respostas, digits=2)
+pct_ruim <- round(qtd_ruim*100 / total_respostas, digits=2)
+pct_regular <- round(qtd_regular*100 / total_respostas, digits=2)
+pct_bom <- round(qtd_bom*100 / total_respostas, digits=2)
+pct_excelente <- round(qtd_excelente*100 / total_respostas, digits=2)
+pct_OOR <- round(qtd_OOR*100 / total_respostas, digits=2)
+
+
+
+CriarTabelaResultados <- function(dados, tematica_selecionada) {
+  # Filter the data by category (tematica)
+  dados <- dados[which(dados$tematica == tematica_selecionada),]
+  
+  # Get a subset of the data, with only the columns that will be included in the table
+  colunas = c("nota", "pergunta", "pessimo", "ruim", "regular", "bom", "excelente", "oor")
+  tabela = dados[order(dados$nota, decreasing = TRUE), colunas]
+  
+  # Resize/recolor the numeric results, making it easier to compare them
+  resize_and_recolor = function(x) cell_spec(x, bold = T, color = spec_color(x, end = 0.9),
+                          font_size = spec_font_size(x)*1.5) 
+  tabela[, 3:8] = t(apply(tabela[, 3:8], 1, resize_and_recolor))
+  
+  # Create the tooltips with the content of OOR
+  tabela$tooltip <- dados[order(dados$nota, decreasing = TRUE), ]$texto_oor
+  # Add the tooltips to the OOR column
+  tabela$oor <- cell_spec(
+    tabela$oor,
+    popover = spec_popover(
+      content = tabela$tooltip,
+      position = "left"
+    ),
+    escape = F
+  )
+  
+  # Remove the number of the question/item
+  # The regex matches the first three characters before a dot. This number 
+  # is specified to prevent matching a further dot.
+  tabela$pergunta <- sub(".{1,3}\\.", "", tabela$pergunta)
+  
+  return(
+    tabela[, 1:8] %>%
+         kable(align=c('c','l','c','c','c','c','c','c'), format = "html", escape = F, col.names = 
+                c("Média", "Item avaliado", "Péssimo (0)", "Ruim (2.5)", "Regular (5)", "Bom (7.5)", "Excelente (10)", "OOR*")) %>%
+        kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed"))
+  )
+}
+
+
+```
+
+<div class = "titulo">
+ `r curso`
+</div>
+
+<script>
+<!-- this script activitates the popover functionality used for the OOR tooltip (Outras Opções de Resposta) -->
+$(document).ready(function(){
+    $('[data-toggle="popover"]').popover(); 
+});
+</script>
+
+---
+
+# Introdução
+
+Em 2020, a Comissão Propria de Avaliação (CPA) da Universidade Federal Rural de Pernambuco (UFRPE) realizou a autoavaliação institucional referente às Políticas Acadêmicas da instituição, contemplando cinco temáticas: políticas de ensino, de pesquisa, de extensão, de assistência estudantil, e também a comunicação institucional.
+
+Esta avaliação foi feita a partir de questionários online, disponibilizados de forma voluntária aos discentes, docentes e técnicos da instituição, no período de 04 de maio a 31 de julho de 2020. Maiores detalhes sobre a metodologia de autoavaliação podem ser encontrados no  [Relatório Sintético Geral](https://jhcp.github.io/cpa2020/geral.html).
+
+Este relatório apresenta as respostas dos discentes (estudantes) de `r curso`. Como docentes e técnicos não são vinculados a cursos, e sim a unidades, departamentos ou orgãos, as suas respostas não estão contempladas neste relatório de cursos.
+
+<div class = "warning">
+OBSERVAÇÃO: este relatório apresenta os resultados da avaliação da UFRPE *como um todo* sob o ponto de vista dos estudantes deste curso; sendo assim, não deve ser interpretado como uma avaliação do curso propriamente dito.
+</div>
+
+# Participação
+
+Este curso contava com `r qtd_universo` discentes aptos a participar desta avaliação, dos quais `r qtd_respondentes` (`r round((qtd_respondentes/qtd_universo)*100, digits=2)`%) responderam ao questionário. Como a participação em alguns cursos foi baixa, essas respostas podem não representar a realidade, apresentando apenas um indicador de como os discentes avaliaram esses eixos.
+
+Do total das respostas obtidas para os itens avaliados, 
+`r pct_pessimo`% foram avaliados como "péssimo", 
+`r pct_ruim`% foram avaliados como "ruim", 
+`r pct_regular`% como "regular", 
+`r pct_bom`% como "bom", 
+`r pct_excelente`% foram considerados "excelente", 
+e `r pct_OOR`% foram outras opções de resposta.
+
+
+
+
+# Resultado completo (discentes)
+
+A seguir são apresentados os resultados classificados por temática: ensino, pesquisa, extensão, assistência estudantil e comunicação institucional. 
+
+## Avaliação do Ensino
+
+```{r }
+CriarTabelaResultados(respostas_curso, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+## Avaliação da Pesquisa
+
+```{r }
+CriarTabelaResultados(respostas_curso, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+## Avaliação da Extensão
+
+```{r }
+CriarTabelaResultados(respostas_curso, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+## Avaliação da Assistência Estudantil
+
+```{r }
+CriarTabelaResultados(respostas_curso, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+## Avaliação da Comunicação Institucional
+
+```{r }
+CriarTabelaResultados(respostas_curso, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+

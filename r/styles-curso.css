@@ -1,0 +1,15 @@
+div.titulo{
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.header-section-number {
+  font-weight: 700;
+}
+
+div.warning { 
+  background-color:#e6f0ff;
+  border-radius: 5px; 
+  padding: 10px;
+  
+}

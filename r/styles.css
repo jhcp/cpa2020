@@ -1,0 +1,67 @@
+div.titulo{
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.header-section-number {
+  font-weight: 700;
+}
+
+h2{
+  font-size: 25px;
+  margin-top: 40px;
+}
+
+h3 {
+  font-size: 20px;
+  margin-top: 10px;
+}
+
+h4 .header-section-number {
+  display: none;
+}
+
+li>a>.header-section-number {
+  display: none;
+}
+
+.cabecalho-destacado h2, .cabecalho-destacado>h3{
+  background-color: #3c3a3a;
+  color: white;
+  padding: 7px;
+}
+
+.header-section-number {
+/*  font-weight: 700;*/
+}
+
+.table>thead>tr>th, .table>tbody>tr>th, .table>tfoot>tr>th, .table>thead>tr>td, .table>tbody>tr>td, .table>tfoot>tr>td {
+  padding: 3px;
+}
+
+div.warning { 
+  background-color:#e6f0ff;
+  border-radius: 5px; 
+  padding: 10px;
+}
+
+div.highlight { 
+  background-color:rgb(200,20,20);
+  border-radius: 5px; 
+  color: white;
+  padding: 10px;
+}
+
+img {
+  max-width: 33%;
+  margin-bottom: 20px;
+  margin-top: 20px;
+  border-bottom: 2px solid gray;
+  border-top: 2px solid gray;
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.table-hover tbody tr:hover td, .table-hover tbody tr:hover th {
+  background-color: #e0e3e8;
+}

@@ -1,0 +1,506 @@
+---
+# Setup the file output settings
+title: Relatório Sintético Geral - Autoavaliação UFAPE 2020
+output:
+  html_document:
+    toc: yes  # toc means table of contents
+    toc_depth: 3
+    toc_float: yes
+    theme: spacelab  # other suitable themes: flatly, readable, lumen
+    number_sections: true
+    css: styles.css
+    self_contained: true
+    mathjax: null  # mathjax is used to display mathematical formula (latex), which is not necessary here, thus null
+---
+
+```{r setup, include=FALSE}
+library(readxl)  # to read excel files
+library(knitr)  # for neat tables
+library(kableExtra)  # for formatting the tables
+library(dplyr) # for auto-colored and sized values
+
+# Prevents the display of the source code, messages and warnings onto the HTML file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+CalcularNota <- function(data) {
+  weighted_sum <- data$pessimo*0 + data$ruim*2.5 + data$regular*5 + data$bom*7.5 + data$excelente*10
+  return(round((((weighted_sum)/22.5)/((data$total_respondentes - data$oor)/2.25))*10, digits = 1))
+}
+
+CalcularParticipacao <- function(dados) {
+  options(scipen=999) # prevents the display of numbers in scientific notation
+  
+  qtd_respondentes <- dados$total_respondentes[[1]]
+  qtd_universo <- dados$universo[[1]]
+  qtd_pessimo <- sum(dados$pessimo)
+  qtd_ruim <- sum(dados$ruim)
+  qtd_regular <- sum(dados$regular)
+  qtd_bom <- sum(dados$bom)
+  qtd_excelente <- sum(dados$excelente)
+  qtd_OOR <- sum(dados$oor)
+  total_respostas = qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+  
+  return(
+    list(
+      qtd_respondentes = qtd_respondentes,
+      qtd_universo = qtd_universo,
+      qtd_pessimo = qtd_pessimo,
+      qtd_ruim = qtd_ruim,
+      qtd_regular = qtd_regular,
+      qtd_bom = qtd_bom,
+      qtd_excelente = qtd_excelente,
+      qtd_OOR = qtd_OOR,
+      total_respostas = total_respostas,
+      pct_pessimo = round(qtd_pessimo*100 / total_respostas, digits=2),
+      pct_ruim = round(qtd_ruim*100 / total_respostas, digits=2),
+      pct_regular = round(qtd_regular*100 / total_respostas, digits=2),
+      pct_bom = round(qtd_bom*100 / total_respostas, digits=2),
+      pct_excelente = round(qtd_excelente*100 / total_respostas, digits=2),
+      pct_OOR = round(qtd_OOR*100 / total_respostas, digits=2)
+    )
+  )
+}
+
+
+CriarTabelaResultados <- function(dados, tematica_selecionada) {
+  # Filter the data by category (tematica)
+  dados <- dados[which(dados$tematica == tematica_selecionada),]
+  
+  # Get a subset of the data, with only the columns that will be included in the table
+  colunas = c("nota", "pergunta", "pessimo", "ruim", "regular", "bom", "excelente", "oor")
+  tabela = dados[order(dados$nota, decreasing = TRUE), colunas]
+  
+  # Resize/recolor the numeric results, making it easier to compare them
+  resize_and_recolor = function(x) cell_spec(x, bold = T, color = spec_color(x, end = 0.9),
+                          font_size = spec_font_size(x)*1.5) 
+  tabela[, 3:8] = t(apply(tabela[, 3:8], 1, resize_and_recolor))
+  
+  # Create the tooltips with the content of OOR
+  tabela$tooltip <- dados[order(dados$nota, decreasing = TRUE), ]$texto_oor
+  # Add the tooltips to the OOR column
+  tabela$oor <- cell_spec(
+    tabela$oor,
+    popover = spec_popover(
+      content = tabela$tooltip,
+      position = "left"
+    ),
+    escape = F
+  )
+  
+  # Remove the number of the question/item
+  # The regex matches the first three characters before a dot. This number 
+  # is specified to prevent matching a further dot.
+  tabela$pergunta <- sub(".{1,3}\\.", "", tabela$pergunta)
+  
+  return(
+    tabela[, 1:8] %>%
+         kable(align=c('c','l','c','c','c','c','c','c'), format = "html", escape = F, col.names = 
+                c("Média", "Item avaliado", "Péssimo (0)", "Ruim (2.5)", "Regular (5)", "Bom (7.5)", "Excelente (10)", "OOR*")) %>%
+        kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed"))
+  )
+}
+
+CalcularMediasPorTema <- function(tabela, isTecnico) {
+  media_ensino <- mean(tabela[which(tabela$tematica == "Ensino"),]$nota)
+  media_pesquisa <- mean(tabela[which(tabela$tematica == "Pesquisa"),]$nota)
+  media_extensao <- mean(tabela[which(tabela$tematica == "Extensão"),]$nota)
+  media_comunicacao <- mean(tabela[which(tabela$tematica == "Comunicação"),]$nota)
+  media_assistencia <- mean(tabela[which(tabela$tematica == "Assistência Estudantil"),]$nota)
+  
+  if (! isTecnico) {
+    names = c('Comunicação Institucional', 'Assistência Estudantil', 'Extensão', 'Pesquisa', 'Ensino')
+    values = c(media_comunicacao, media_assistencia, media_extensao, media_pesquisa, media_ensino)
+  }
+  else {
+    names = c('Comunicação Institucional', 'Extensão', 'Pesquisa')
+    values = c(media_comunicacao, media_extensao, media_pesquisa)
+  }
+  
+  df <- data.frame(names, values)
+  colnames(df) <- c('tematica', 'media')
+  
+  return(df)
+  
+}
+
+CriarGraficoDeMediasPorTema <- function(tabela, isTecnico) {
+  library(ggplot2)
+  
+  df <- CalcularMediasPorTema(tabela, isTecnico)
+  
+  # Force correct order
+  df$tematica <- factor(df$tematica, levels = df$tematica)
+  
+  return (
+    ggplot(df, aes(x = media, y = tematica, label = round(media, digits = 2) )) +
+        geom_segment(aes(x = 0, y = tematica, xend = media, yend = tematica) , colour = rgb(0.2,0.5,0.5,0.9)) +
+        geom_point(colour = rgb(0.2,0.5,0.5,0.9), size = 5) +
+        xlim(0, 10) +
+        theme_minimal() +
+        geom_text(nudge_x = 1) +
+        theme(axis.title = element_blank(),
+              panel.grid.minor = element_blank(),
+              legend.position = "none",
+              axis.text.y = element_text(size = 14),
+              plot.title = element_text(size = 20, margin = margin(b = 10), hjust = 0),
+              plot.subtitle = element_text(size = 12, color = "darkslategrey", margin = margin(b = 25, l = -25)),
+              plot.caption = element_text(size = 8, margin = margin(t = 10), color = "grey70", hjust = 0))
+  )
+  
+}
+
+# Load data
+respostas_estudantes <- read_excel("planilhas/discentes-tema.xlsx", sheet="consolidados")
+respostas_docentes <- read_excel("planilhas/docentes-tema.xlsx", sheet="consolidados")
+respostas_tecnicos <- read_excel("planilhas/tecnicos-tema.xlsx", sheet="consolidados")
+
+respostas_estudantes$nota <- CalcularNota(respostas_estudantes)
+respostas_docentes$nota <- CalcularNota(respostas_docentes)
+respostas_tecnicos$nota <- CalcularNota(respostas_tecnicos)
+
+respostas_estudantes_presencial <- respostas_estudantes[which(respostas_estudantes$modalidade == "UFAPE"),]
+respostas_docentes_presencial <- respostas_docentes[which(respostas_docentes$modalidade == "UFAPE"),]
+respostas_tecnicos_presencial <- respostas_tecnicos[which(respostas_tecnicos$modalidade == "UFAPE"),]
+
+```
+
+
+
+<script>
+<!-- this script activitates the popover functionality used for the OOR tooltip (Outras Opções de Resposta) -->
+$(document).ready(function(){
+    $('[data-toggle="popover"]').popover(); 
+});
+</script>
+
+
+
+
+
+<!-- início do documento propriamente dito -->
+Este relatório apresenta os resultados quantitativos da autoavaliação 2020 da Universidade Federal do Agreste de Pernambuco (UFAPE), conduzida pela Comissão Própria de Avaliação (CPA) da Universidade Federal Rural de Pernambuco (UFRPE) em parceria com a CPA da UFAPE. Neste ano foram avaliadas as Políticas Acadêmicas da instituição, contemplando cinco temáticas: políticas de ensino, de pesquisa, de extensão, de assistência estudantil, e também a comunicação institucional.
+
+Os questionários foram aplicados durante a pandemia causada pela Covid-19. De tal forma, toda mobilização e sensibilização para participação na autoavaliação foram virtuais, através das mídias sociais e dos e-mails institucionais. Assim, os resultados aqui apresentados refletem, também, esse momento vivido por toda comunidade universitária.  
+
+A Seção 1 apresenta uma visão geral dos resultados da autoavaliação com base nas médias das respostas obtidas. A Seção 2 contém os resultados completos dos questionários de autoavaliação aplicados na Universidade Federal do Agreste de Pernambuco (UFAPE). Esses resultados são classificados por temática e por segmento (estudantes, docentes e técnicos). 
+Considerações sobre a [metodologia de avaliação](#metodologia) são apresentadas na Seção 3. Por último, a Seção 4 conclui este relatório.
+
+
+---
+
+# Visão Geral
+
+A Autoavaliação 2020 da UFAPE contou com a participação de 130 estudantes, 87 docentes e 29 técnicos. A seguir são apresentadas as médias dos resultados da avaliação feita por cada segmento acadêmico.
+
+
+## Estudantes (UFAPE)
+
+```{r}
+CriarGraficoDeMediasPorTema(respostas_estudantes_presencial, FALSE)
+```
+
+```{r}
+#pega os dados de participação e calcula os seus porcentuais, considerando todas as perguntas
+participacao <- CalcularParticipacao(respostas_estudantes_presencial)
+```
+
+Os dados apresentados acima apontam a média das respostas de cada tema, dadas pelos estudantes da UFAPE. A instituição contava com `r participacao$qtd_universo` estudantes aptos a participar da avaliação, dos quais `r participacao$qtd_respondentes` (`r round((participacao$qtd_respondentes/participacao$qtd_universo)*100, digits=2)`%) responderam ao questionário. 
+
+Considerando a totalidade das respostas desses estudantes, referentes às Políticas Acadêmicas da UFAPE, 
+`r participacao$pct_pessimo`% das respostas foram "péssimo", 
+`r participacao$pct_ruim`% foram "ruim", 
+`r participacao$pct_regular`% foram "regular", 
+`r participacao$pct_bom`% foram "bom", 
+`r participacao$pct_excelente`% foram "excelente", 
+e `r participacao$pct_OOR`% foram outras opções de resposta.
+
+## Docentes (UFAPE)
+
+```{r}
+CriarGraficoDeMediasPorTema(respostas_docentes_presencial, FALSE)
+```
+
+```{r}
+#pega os dados de participação e calcula os seus porcentuais, considerando todas as perguntas
+participacao <- CalcularParticipacao(respostas_docentes_presencial)
+```
+
+Os dados apresentados acima apontam a média das respostas de cada tema, dadas pelos servidores docentes da UFAPE. A instituição contava com `r participacao$qtd_universo` docentes aptos a participar da avaliação, dos quais `r participacao$qtd_respondentes` (`r round((participacao$qtd_respondentes/participacao$qtd_universo)*100, digits=2)`%) responderam ao questionário. 
+
+Considerando a totalidade das respostas desses docentes, referentes às Políticas Acadêmicas da UFAPE, 
+`r participacao$pct_pessimo`% das respostas foram "péssimo", 
+`r participacao$pct_ruim`% foram "ruim", 
+`r participacao$pct_regular`% foram "regular", 
+`r participacao$pct_bom`% foram "bom", 
+`r participacao$pct_excelente`% foram "excelente", 
+e `r participacao$pct_OOR`% foram outras opções de resposta.
+
+## Técnicos (UFAPE)
+
+```{r}
+CriarGraficoDeMediasPorTema(respostas_tecnicos_presencial, TRUE)
+```
+
+```{r}
+#pega os dados de participação e calcula os seus porcentuais, considerando todas as perguntas
+participacao <- CalcularParticipacao(respostas_tecnicos_presencial)
+```
+
+Os dados apresentados acima apontam a média das respostas de cada tema, dadas pelos servidores técnicos da UFAPE. A instituição contava com `r participacao$qtd_universo` técnicos aptos a participar da avaliação, dos quais `r participacao$qtd_respondentes` (`r round((participacao$qtd_respondentes/participacao$qtd_universo)*100, digits=2)`%) responderam ao questionário. 
+
+Considerando a totalidade das respostas desses técnicos, referentes às Políticas Acadêmicas da UFAPE, 
+`r participacao$pct_pessimo`% das respostas foram "péssimo", 
+`r participacao$pct_ruim`% foram "ruim", 
+`r participacao$pct_regular`% foram "regular", 
+`r participacao$pct_bom`% foram "bom", 
+`r participacao$pct_excelente`% foram "excelente", 
+e `r participacao$pct_OOR`% foram outras opções de resposta.
+
+*Observação: o questionário aplicado aos técnicos não contemplou as temáticas Ensino e Assistência Estudantil.*
+
+
+---
+
+# Resultados da Avaliação das Políticas Acadêmicas (UFAPE) <!-- {.tabset .tabset-pills} -->
+
+
+
+Esta seção apresenta os resultados referentes à avaliação das políticas acadêmicas da UFAPE, conforme respondido pelos seus integrantes.
+
+A seguir são apresentados os resultados classificados por temática: ensino, pesquisa, extensão, assistência estudantil e comunicação institucional. Em cada temática, os resultados são separados por segmentos: estudantes, docentes e técnicos. Essa separação é feita visto que as perguntas são diferentes para cada segmento. Em cada combinação temática/segmento, os resultados são apresentados em ordem decrescente de média.
+
+
+
+
+
+## Avaliação do Ensino (UFAPE) {.cabecalho-destacado}
+
+
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_estudantes_presencial, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre ensino.
+
+
+
+
+
+
+## Avaliação da Pesquisa (UFAPE) {.cabecalho-destacado}
+
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_estudantes_presencial, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+
+
+
+## Avaliação da Extensão (UFAPE) {.cabecalho-destacado}
+
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_estudantes_presencial, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+## Avaliação da Assistência Estudantil (UFAPE) {.cabecalho-destacado}
+
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_estudantes_presencial, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre assistência estudantil.
+
+
+
+
+
+## Avaliação da Comunicação Institucional (UFAPE) {.cabecalho-destacado}
+
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_estudantes_presencial, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+# Metodologia
+
+
+
+A avaliação institucional possui uma periodicidade trienal. No ciclo 2018-2020, um ou mais eixos avaliativos foram avaliados por ano pela comunidade universitária. Em 2020 foi avaliado o Eixo 3 (Políticas Acadêmicas).
+
+Os resultados aqui relatados apresentam a percepção da comunidade universitária com relação aos itens avaliados, com base em questionários *online*, disponibilizados de forma aberta e voluntária aos estudantes, docentes e técnicos da instituição, no período de 04 de maio a 31 de julho de 2020. Note que a avaliação ocorreu durante o período de pandemia, inviabilizando a divulgação presencial dos questionários.
+
+O método utilizado para o recolhimento de dados da comunidade universitária foi o quantitativo. Esse método se caracteriza pela coleta e quantificação de dados, indicadores e tendências observáveis, como, também, no tratamento delas por meio de técnicas estatísticas. Esse tipo de investigação mostra-se apropriado quando existe a possibilidade de buscar medidas quantificáveis de variáveis e de fazer inferências a partir de amostras de uma população. A estratégia de busca de dados foi por meio de *Survey* ou Sondagem, que se caracteriza a partir do levantamento de dados do objeto de estudo. Na pesquisa em questão, o objeto de investigação é a UFAPE e o já referido eixo avaliativo (COHEN; MANION; MORRISON, 2000).
+
+O questionário de avaliação utilizado passou por um processo de atualização e adequação para atender aos novos instrumentos de avaliação institucional e de cursos. Essa reformulação contou com a participação da comunidade universitária da UFRPE no período de novembro a dezembro de 2018, que então
+incluia a Unidade Acadêmica de Garanhuns. 
+
+
+## Aplicação do questionário
+O instrumento utilizado para a coleta de informações foi o questionário estruturado com perguntas fechadas e disponibilizado no [site da CPA](www.cpa.ufrpe.br)/UFRPE. A opção por esse instrumento se deve ao fato de ele atingir um grande número de pessoas, mesmo que elas estejam geograficamente distantes, garantir o anonimato das respostas (uso do CPF e da senha de serviços integrados apenas para autenticação), permitir que a comunidade universitária responda o questionário na hora que julgar mais conveniente, além de apresentar baixo custo operacional.
+
+Para essa autenticação do acesso ao questionário foi utilizada a senha de serviços integrados disponibilizada pelo Sistema de Informação e Gestão Acadêmica (SIG@) da instituição. Sabendo-se que a população que compõe a UFAPE é bastante heterogênea, em especial a população discente, considerando a quantidade de ingressantes e de egressos a cada semestre letivo, esta população foi fixada após a finalização do período de matrícula, reajuste e trancamento da mesma para que fosse considerada, efetivamente, a população ativa da Universidade. Esse número foi fornecido com base nos dados do SIG@. Da população total de estudantes da UFAPE, foram excluídos os alunos matriculados no 1º período de todos os cursos de graduação, haja vista que estes ainda não conheciam efetivamente a Universidade.
+
+Os alunos matriculados na pós-graduação não participaram desta avaliação, uma vez que a autoavaliação requerida pelo INEP (Instituto Nacional de Estudos e Pesquisas Educacionais Anísio Teixeira), obrigatoriamente conduzida pela CPA, se refere exclusivamente aos cursos de graduação.
+
+A partir das questões presentes no questionário, os respondentes foram convidados a avaliar as políticas acadêmicas da UFAPE. As possíveis respostas às perguntas do questionário são baseadas na escala Likert, apresentando a seguinte legenda: Péssimo, Ruim, Regular, Bom e Excelente. 
+Nas questões para as quais os respondentes pudessem não saber como avaliar ou que não se relacionassem com a sua área de atuação, havia outras opções de respostas (OOR) específicas para cada pergunta, evitando que o respondente avaliasse algo que não se sentia em condições de avaliar.
+
+
+## Ranqueamento das médias na autoavaliação 2020
+Na autoavaliação 2020 foi criado um *ranking* automático com base na média ponderada das respostas, com normalização para um valor de 0 (zero) a 10 (dez). Os pesos atribuídos a cada categoria de resposta foram:
+
+- Péssimo: peso 0 (zero)
+- Ruim: peso 2,5 (dois e meio)
+- Regular: peso 5 (cinco)
+- Bom: peso 7,5 (sete e meio)
+- Excelente: peso 10 (dez)
+- Outras opções de respostas (ex: "não conheço a atuação", "nunca acessei") foram desconsideradas no cálculo dessa média.
+
+Na apresentação dos resultados foi utilizado um arredondamento para o valor mais próximo, com precisão de uma casa decimal.
+
+## Principais problemas identificados
+Durante o processo de avaliação foram encontrados problemas de natureza técnica e também metodológica, conforme listado a seguir.
+
+- Disponibilização do questionário de avaliação em uma plataforma institucional (site da CPA) externa ao Sistema de Informação e Gestão Acadêmica (SIG@), aumentando o atrito no acesso ao questionário;
+- Desconhecimento da senha de serviços integrados por parte da população universitária;
+- Suspensão das atividades acadêmicas e administrativas, em função da quarentena adotada pela Universidade para reduzir a contaminação pelo novo Coronavírus, inviabilizou a mobilização e a sensibilização da Comunidade Universitária de forma presencial a participarem da autoavaliação institucional 2020.
+- Falta de acesso a Internet por parte da comunidade durante a suspensão das atividades acadêmicas.
+
+
+# Conclusão
+
+O relatório sintético aqui apresentado refere-se apenas aos resultados advindos da autoavaliação institucional 2020 realizada pela Comunidade Universitária da UFAPE a partir de suas percepções sobre as Políticas Acadêmicas. É importante considerar que durante a autoavaliação institucional 2020 as atividades acadêmicas e administrativas estavam suspensas devido à pandemia do novo Coronavírus.
+
+Este relatório está dividido por áreas temáticas (Ensino, Pesquisa, Extensão, Assistência Estudantil e Comunicação Institucional), de modo a apresentar como cada política foi avaliada pela Comunidade Universitária e identificar suas potencialidades e fragilidades, facilitando assim a tomada de decisão por parte de cada gestor à frente de tais políticas de forma mais específica. 
+
+Espera-se que este relatório sintético contribua para que os resultados cheguem de forma mais rápida para a Comunidade Universitária, mas também que contribua para outras análises e inferências por todos os gestores e gestoras da instituição e os auxilie no planejamento de ações e na tomada de decisão. 
+
+
+
+# Referências {.unlisted .unnumbered}
+
+COHEN, Louis, Manion Lawrence & Morrison, Keith. Research Methods in Education.
+British Journal of Educational Studies 48 (4):446-446 (2000). Disponível em:
+<https://philpapers.org/rec/COHRMI> Acesso em: 13 nov. 2020.

@@ -1,0 +1,366 @@
+---
+# Setup the file output settings
+title: Relatório Sintético de Unidade - Autoavaliação UFRPE 2020 (`r toupper(sigla)`)
+output: 
+  html_document:
+    toc: yes  # toc means table of contents
+    toc_depth: 2
+    toc_float: yes
+    theme: spacelab
+    number_sections: true
+    css: styles.css
+    self_contained: true
+    mathjax: null  # mathjax is used to display mathematical formula (latex), which is not necessary here, thus null
+---
+
+
+```{r echo=FALSE}
+# Prevents the display of the source code, messages and warnings onto the HTML file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+CriarTabelaResultados <- function(dados, tematica_selecionada) {
+  # Filter the data by category (tematica)
+  dados <- dados[which(dados$tematica == tematica_selecionada),]
+  
+  # Get a subset of the data, with only the columns that will be included in the table
+  colunas = c("nota", "pergunta", "pessimo", "ruim", "regular", "bom", "excelente", "oor")
+  tabela = dados[order(dados$nota, decreasing = TRUE), colunas]
+  
+  # Resize/recolor the numeric results, making it easier to compare them
+  resize_and_recolor = function(x) cell_spec(x, bold = T, color = spec_color(x, end = 0.9),
+                          font_size = spec_font_size(x)*1.5) 
+  tabela[, 3:8] = t(apply(tabela[, 3:8], 1, resize_and_recolor))
+  
+  # Create the tooltips with the content of OOR
+  tabela$tooltip <- dados[order(dados$nota, decreasing = TRUE), ]$texto_oor
+  # Add the tooltips to the OOR column
+  tabela$oor <- cell_spec(
+    tabela$oor,
+    popover = spec_popover(
+      content = tabela$tooltip,
+      position = "left"
+    ),
+    escape = F
+  )
+  
+  # Remove the number of the question/item
+  # The regex matches the first three characters before a dot. This number 
+  # is specified to prevent matching a further dot.
+  tabela$pergunta <- sub(".{1,3}\\.", "", tabela$pergunta)
+  
+  return(
+    tabela[, 1:8] %>%
+         kable(align=c('c','l','c','c','c','c','c','c'), format = "html", escape = F, col.names = 
+                c("Média", "Item avaliado", "Péssimo (0)", "Ruim (2.5)", "Regular (5)", "Bom (7.5)", "Excelente (10)", "OOR*")) %>%
+        kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed"))
+  )
+}
+
+```
+
+<script>
+<!-- this script activitates the popover functionality used for the OOR tooltip (Outras Opções de Resposta) -->
+$(document).ready(function(){
+    $('[data-toggle="popover"]').popover(); 
+});
+</script>
+
+---
+
+
+Este relatório apresenta as respostas dos discentes, docentes e técnicos da `r nomeUnidade`, referente à autoavaliação 2020 da Universidade Federal Rural de Pernambuco (UFRPE), conduzida pela Comissão Própria de Avaliação (CPA). Neste ano foram avaliadas as Políticas Acadêmicas da instituição, contemplando cinco temáticas: políticas de ensino, de pesquisa, de extensão, de assistência estudantil, e também a comunicação institucional.
+
+Esta avaliação foi feita a partir de questionários online, disponibilizados de forma voluntária aos discentes, docentes e técnicos da instituição, no período de  04 de maio a 31 de julho de 2020. Maiores detalhes sobre a metodologia de autoavaliação podem ser encontrados no [Relatório Sintético Geral](https://jhcp.github.io/cpa2020/geral.html).
+
+
+<div class = "warning">
+OBSERVAÇÃO: este relatório apresenta os resultados da avaliação da UFRPE *como um todo* sob o ponto de vista dos membros desta unidade; sendo assim, não pode ser interpretado como uma avaliação da unidade propriamente dita.
+</div>
+
+
+# Participação
+
+---
+
+
+```{r}
+# Calculates the overall participation percentages
+qtd_respondentes_discentes <- respostas_discentes$total_respondentes[[1]]
+qtd_universo_discentes <- respostas_discentes$total[[1]]
+
+qtd_respondentes_docentes <- respostas_docentes$total_respondentes[[1]]
+qtd_universo_docentes <- respostas_docentes$total[[1]]
+
+qtd_respondentes_tecnicos <- respostas_tecnicos$total_respondentes[[1]]
+qtd_universo_tecnicos <- respostas_tecnicos$total[[1]]
+```
+
+Dentre os membros da comunidade acadêmica desta unidade aptos a participar da avaliação, 
+`r round((qtd_respondentes_discentes/qtd_universo_discentes)*100, digits=2)`% dos estudantes responderam ao questionário (`r qtd_respondentes_discentes` de `r qtd_universo_discentes`),
+`r round((qtd_respondentes_docentes/qtd_universo_docentes)*100, digits=2)`% dos docentes responderam ao questionário (`r qtd_respondentes_docentes` de `r qtd_universo_docentes`), e
+`r round((qtd_respondentes_tecnicos/qtd_universo_tecnicos)*100, digits=2)`% dos técnicos responderam ao questionário (`r qtd_respondentes_tecnicos` de `r qtd_universo_tecnicos`).
+
+## Discentes (`r toupper(sigla)`)  {.cabecalho-destacado}
+
+```{r}
+# Calculate students' participation
+respostas_atual <- respostas_discentes
+qtd_respondentes <- respostas_atual$total_respondentes[[1]]
+qtd_universo <- respostas_atual$total[[1]]
+qtd_pessimo<- sum(respostas_atual$pessimo)
+qtd_ruim<- sum(respostas_atual$ruim)
+qtd_regular <- sum(respostas_atual$regular)
+qtd_bom <- sum(respostas_atual$bom)
+qtd_excelente <- sum(respostas_atual$excelente)
+qtd_OOR <- sum(respostas_atual$oor)
+total_respostas <- qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+pct_pessimo <- round(qtd_pessimo*100 / total_respostas, digits=2)
+pct_ruim <- round(qtd_ruim*100 / total_respostas, digits=2)
+pct_regular <- round(qtd_regular*100 / total_respostas, digits=2)
+pct_bom <- round(qtd_bom*100 / total_respostas, digits=2)
+pct_excelente <- round(qtd_excelente*100 / total_respostas, digits=2)
+pct_OOR <- round(qtd_OOR*100 / total_respostas, digits=2)
+
+```
+
+Durante o período de avaliação esta unidade contava com `r qtd_universo` **discentes** aptos a participar da avaliação, dos quais `r qtd_respondentes` (`r round((qtd_respondentes/qtd_universo)*100, digits=2)`%) responderam ao questionário. Do total das respostas referentes às Políticas Acadêmicas, 
+`r pct_pessimo`% foram "péssimo", 
+`r pct_ruim`% foram "ruim", 
+`r pct_regular`% foram "regular", 
+`r pct_bom`% foram "bom", 
+`r pct_excelente`% foram "excelente", 
+e `r pct_OOR`% foram outras opções de resposta.
+
+
+## Docentes (`r toupper(sigla)`)  {.cabecalho-destacado}
+
+```{r}
+# Calculate professors' participation
+respostas_atual <- respostas_docentes
+qtd_respondentes <- respostas_atual$total_respondentes[[1]]
+qtd_universo <- respostas_atual$total[[1]]
+qtd_pessimo<- sum(respostas_atual$pessimo)
+qtd_ruim<- sum(respostas_atual$ruim)
+qtd_regular <- sum(respostas_atual$regular)
+qtd_bom <- sum(respostas_atual$bom)
+qtd_excelente <- sum(respostas_atual$excelente)
+qtd_OOR <- sum(respostas_atual$oor)
+total_respostas <- qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+pct_pessimo = round(qtd_pessimo*100 / total_respostas, digits=2)
+pct_ruim = round(qtd_ruim*100 / total_respostas, digits=2)
+pct_regular <- round(qtd_regular*100 / total_respostas, digits=2)
+pct_bom <- round(qtd_bom*100 / total_respostas, digits=2)
+pct_excelente <- round(qtd_excelente*100 / total_respostas, digits=2)
+pct_OOR <- round(qtd_OOR*100 / total_respostas, digits=2)
+
+```
+
+Durante o período de avaliação esta unidade contava com `r qtd_universo` **docentes** aptos a participar da avaliação, dos quais `r qtd_respondentes` (`r round((qtd_respondentes/qtd_universo)*100, digits=2)`%) responderam ao questionário. Do total das respostas referentes às Políticas Acadêmicas, 
+`r pct_pessimo`% foram "péssimo", 
+`r pct_ruim`% foram "ruim", 
+`r pct_regular`% foram "regular",
+`r pct_bom`% foram "bom",
+`r pct_excelente`% foram "excelente",
+e `r pct_OOR`% foram outras opções de resposta.
+
+
+## Técnicos (`r toupper(sigla)`)  {.cabecalho-destacado}
+
+```{r}
+# Calculate technicians' participation
+respostas_atual <- respostas_tecnicos
+qtd_respondentes <- respostas_atual$total_respondentes[[1]]
+qtd_universo <- respostas_atual$total[[1]]
+qtd_pessimo<- sum(respostas_atual$pessimo)
+qtd_ruim<- sum(respostas_atual$ruim)
+qtd_regular <- sum(respostas_atual$regular)
+qtd_bom <- sum(respostas_atual$bom)
+qtd_excelente <- sum(respostas_atual$excelente)
+qtd_OOR <- sum(respostas_atual$oor)
+total_respostas <- qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+pct_pessimo = round(qtd_pessimo*100 / total_respostas, digits=2)
+pct_ruim = round(qtd_ruim*100 / total_respostas, digits=2)
+pct_regular <- round(qtd_regular*100 / total_respostas, digits=2)
+pct_bom <- round(qtd_bom*100 / total_respostas, digits=2)
+pct_excelente <- round(qtd_excelente*100 / total_respostas, digits=2)
+pct_OOR <- round(qtd_OOR*100 / total_respostas, digits=2)
+
+```
+
+
+Durante o período de avaliação esta unidade contava com `r qtd_universo` **técnicos** aptos a participar da avaliação, dos quais `r qtd_respondentes` (`r round((qtd_respondentes/qtd_universo)*100, digits=2)`%) responderam ao questionário. Do total das respostas referentes às Políticas Acadêmicas, 
+`r pct_pessimo`% foram "péssimo", 
+`r pct_ruim`% foram "ruim", 
+`r pct_regular`% foram "regular",
+`r pct_bom`% foram "bom",
+`r pct_excelente`% foram "excelente",
+e `r pct_OOR`% foram outras opções de resposta.
+
+
+
+
+
+# Resultados da Avaliação das Políticas Acadêmicas
+
+---
+
+
+Esta seção apresenta os resultados referentes à avaliação das políticas acadêmicas da UFRPE, conforme respondido pelos integrantes desta unidade acadêmica.
+
+A seguir são apresentados os resultados classificados por temática: ensino, pesquisa, extensão, assistência estudantil e comunicação institucional. Em cada temática, os resultados são separados por segmentos: estudantes, docentes e técnicos. Essa separação é feita visto que as perguntas são diferentes para cada segmento.
+
+
+
+
+
+## Avaliação do Ensino (`r toupper(sigla)`) {.cabecalho-destacado .tabset .tabset-fade .tabset-pills}
+
+Escolha o segmento cujos resultados você deseja visualizar (Estudantes, Docentes ou Técnicos)
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_discentes, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre ensino.
+
+
+
+
+
+## Avaliação da Pesquisa (`r toupper(sigla)`) {.cabecalho-destacado .tabset .tabset-fade .tabset-pills}
+
+Escolha o segmento cujos resultados você deseja visualizar (Estudantes, Docentes ou Técnicos)
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_discentes, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+
+
+
+## Avaliação da Extensão (`r toupper(sigla)`) {.cabecalho-destacado .tabset .tabset-fade .tabset-pills}
+
+Escolha o segmento cujos resultados você deseja visualizar (Estudantes, Docentes ou Técnicos)
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_discentes, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+## Avaliação da Assistência Estudantil (`r toupper(sigla)`) {.cabecalho-destacado .tabset .tabset-fade .tabset-pills}
+
+Escolha o segmento cujos resultados você deseja visualizar (Estudantes, Docentes ou Técnicos)
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_discentes, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre assistência estudantil.
+
+
+
+
+
+
+
+
+## Avaliação da Comunicação Institucional (`r toupper(sigla)`) {.cabecalho-destacado .tabset .tabset-fade .tabset-pills}
+
+Escolha o segmento cujos resultados você deseja visualizar (Estudantes, Docentes ou Técnicos)
+
+### Estudantes
+
+```{r}
+CriarTabelaResultados(respostas_discentes, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
