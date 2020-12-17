@@ -65,7 +65,10 @@ CriarTabelaResultados <- function(dados, tematica_selecionada) {
   # Remove the number of the question/item
   # The regex matches the first three characters before a dot. This number 
   # is specified to prevent matching a further dot.
-  tabela$pergunta <- sub(".{1,3}\\.", "", tabela$pergunta)
+  tabela$pergunta <- sub(".{1,3}\\. ", "", tabela$pergunta)
+  
+  # Capitalize the text of the question/item
+  tabela$pergunta <- capitalize(tabela$pergunta)
   
   return(
     tabela[, 1:8] %>%

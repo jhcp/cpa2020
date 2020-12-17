@@ -4,6 +4,7 @@ library(markdown)
 library(rmarkdown)
 library(kableExtra)  # for formatting the tables
 library(dplyr)  # for auto-colored and sized values
+library(Hmisc) # capitalize
 
 CalcularNota <- function(data) {
   weighted_sum <- data$pessimo*0 + data$ruim*2.5 + data$regular*5 + data$bom*7.5 + data$excelente*10

@@ -18,6 +18,7 @@ library(readxl)  # to read excel files
 library(knitr)  # for neat tables
 library(kableExtra)  # for formatting the tables
 library(dplyr) # for auto-colored and sized values
+library(Hmisc) # capitalize
 
 # Prevents the display of the source code, messages and warnings onto the HTML file
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
@@ -61,7 +62,6 @@ CalcularParticipacao <- function(dados) {
   )
 }
 
-
 CriarTabelaResultados <- function(dados, tematica_selecionada) {
   # Filter the data by category (tematica)
   dados <- dados[which(dados$tematica == tematica_selecionada),]
@@ -90,7 +90,10 @@ CriarTabelaResultados <- function(dados, tematica_selecionada) {
   # Remove the number of the question/item
   # The regex matches the first three characters before a dot. This number 
   # is specified to prevent matching a further dot.
-  tabela$pergunta <- sub(".{1,3}\\.", "", tabela$pergunta)
+  tabela$pergunta <- sub(".{1,3}\\. ", "", tabela$pergunta)
+  
+  # Capitalize the text of the question/item
+  tabela$pergunta <- capitalize(tabela$pergunta)
   
   return(
     tabela[, 1:8] %>%
