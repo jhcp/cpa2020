@@ -1,0 +1,326 @@
+---
+# Setup the file output settings
+title: Relatório Sintético Geral - Autoavaliação CODAI/UFRPE 2020
+output:
+  html_document:
+    toc: yes  # toc means table of contents
+    toc_depth: 3
+    toc_float: yes
+    theme: spacelab  # other suitable themes: flatly, readable, lumen
+    number_sections: true
+    css: styles.css
+    self_contained: true
+    mathjax: null  # mathjax is used to display mathematical formula (latex), which is not necessary here, thus null
+---
+
+```{r setup, include=FALSE}
+library(readxl)  # to read excel files
+library(knitr)  # for neat tables
+library(kableExtra)  # for formatting the tables
+library(dplyr) # for auto-colored and sized values
+library(Hmisc) # capitalize
+
+# Prevents the display of the source code, messages and warnings onto the HTML file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+CalcularNota <- function(data) {
+  weighted_sum <- data$pessimo*0 + data$ruim*2.5 + data$regular*5 + data$bom*7.5 + data$excelente*10
+  return(round((((weighted_sum)/22.5)/((data$total_respondentes - data$oor)/2.25))*10, digits = 1))
+}
+
+CalcularParticipacao <- function(dados) {
+  options(scipen=999) # prevents the display of numbers in scientific notation
+  
+  qtd_respondentes <- dados$total_respondentes[[1]]
+  qtd_universo <- dados$universo[[1]]
+  qtd_pessimo <- sum(dados$pessimo)
+  qtd_ruim <- sum(dados$ruim)
+  qtd_regular <- sum(dados$regular)
+  qtd_bom <- sum(dados$bom)
+  qtd_excelente <- sum(dados$excelente)
+  qtd_OOR <- sum(dados$oor)
+  total_respostas = qtd_pessimo + qtd_ruim + qtd_regular + qtd_bom + qtd_excelente + qtd_OOR
+  
+  return(
+    list(
+      qtd_respondentes = qtd_respondentes,
+      qtd_universo = qtd_universo,
+      qtd_pessimo = qtd_pessimo,
+      qtd_ruim = qtd_ruim,
+      qtd_regular = qtd_regular,
+      qtd_bom = qtd_bom,
+      qtd_excelente = qtd_excelente,
+      qtd_OOR = qtd_OOR,
+      total_respostas = total_respostas,
+      pct_pessimo = round(qtd_pessimo*100 / total_respostas, digits=2),
+      pct_ruim = round(qtd_ruim*100 / total_respostas, digits=2),
+      pct_regular = round(qtd_regular*100 / total_respostas, digits=2),
+      pct_bom = round(qtd_bom*100 / total_respostas, digits=2),
+      pct_excelente = round(qtd_excelente*100 / total_respostas, digits=2),
+      pct_OOR = round(qtd_OOR*100 / total_respostas, digits=2)
+    )
+  )
+}
+
+CriarTabelaResultados <- function(dados, tematica_selecionada) {
+  # Filter the data by category (tematica)
+  dados <- dados[which(dados$tematica == tematica_selecionada),]
+  
+  # Get a subset of the data, with only the columns that will be included in the table
+  colunas = c("nota", "pergunta", "pessimo", "ruim", "regular", "bom", "excelente", "oor")
+  tabela = dados[order(dados$nota, decreasing = TRUE), colunas]
+  
+  # Resize/recolor the numeric results, making it easier to compare them
+  resize_and_recolor = function(x) cell_spec(x, bold = T, color = spec_color(x, end = 0.9),
+                          font_size = spec_font_size(x)*1.5) 
+  tabela[, 3:8] = t(apply(tabela[, 3:8], 1, resize_and_recolor))
+  
+  # Create the tooltips with the content of OOR
+  tabela$tooltip <- dados[order(dados$nota, decreasing = TRUE), ]$texto_oor
+  # Add the tooltips to the OOR column
+  tabela$oor <- cell_spec(
+    tabela$oor,
+    popover = spec_popover(
+      content = tabela$tooltip,
+      position = "left"
+    ),
+    escape = F
+  )
+  
+  # Remove the number of the question/item
+  # The regex matches the first three characters before a dot. This number 
+  # is specified to prevent matching a further dot.
+  tabela$pergunta <- sub(".{1,3}\\. ", "", tabela$pergunta)
+  
+  # Capitalize the text of the question/item
+  tabela$pergunta <- capitalize(tabela$pergunta)
+  
+  return(
+    tabela[, 1:8] %>%
+         kable(align=c('c','l','c','c','c','c','c','c'), format = "html", escape = F, col.names = 
+                c("Média", "Item avaliado", "Péssimo (0)", "Ruim (2.5)", "Regular (5)", "Bom (7.5)", "Excelente (10)", "OOR*")) %>%
+        kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed"))
+  )
+}
+
+CalcularMediasPorTema <- function(tabela, isTecnico) {
+  media_ensino <- mean(tabela[which(tabela$tematica == "Ensino"),]$nota)
+  media_pesquisa <- mean(tabela[which(tabela$tematica == "Pesquisa"),]$nota)
+  media_extensao <- mean(tabela[which(tabela$tematica == "Extensão"),]$nota)
+  media_comunicacao <- mean(tabela[which(tabela$tematica == "Comunicação"),]$nota)
+  media_assistencia <- mean(tabela[which(tabela$tematica == "Assistência Estudantil"),]$nota)
+  
+  if (! isTecnico) {
+    names = c('Comunicação Institucional', 'Assistência Estudantil', 'Extensão', 'Pesquisa', 'Ensino')
+    values = c(media_comunicacao, media_assistencia, media_extensao, media_pesquisa, media_ensino)
+  }
+  else {
+    names = c('Comunicação Institucional', 'Extensão', 'Pesquisa')
+    values = c(media_comunicacao, media_extensao, media_pesquisa)
+  }
+  
+  df <- data.frame(names, values)
+  colnames(df) <- c('tematica', 'media')
+  
+  return(df)
+  
+}
+
+CriarGraficoDeMediasPorTema <- function(tabela, isTecnico) {
+  library(ggplot2)
+  
+  df <- CalcularMediasPorTema(tabela, isTecnico)
+  
+  # Force correct order
+  df$tematica <- factor(df$tematica, levels = df$tematica)
+  
+  return (
+    ggplot(df, aes(x = media, y = tematica, label = round(media, digits = 2) )) +
+        geom_segment(aes(x = 0, y = tematica, xend = media, yend = tematica) , colour = rgb(0.2,0.5,0.5,0.9)) +
+        geom_point(colour = rgb(0.2,0.5,0.5,0.9), size = 5) +
+        xlim(0, 10) +
+        theme_minimal() +
+        geom_text(nudge_x = 1) +
+        theme(axis.title = element_blank(),
+              panel.grid.minor = element_blank(),
+              legend.position = "none",
+              axis.text.y = element_text(size = 14),
+              plot.title = element_text(size = 20, margin = margin(b = 10), hjust = 0),
+              plot.subtitle = element_text(size = 12, color = "darkslategrey", margin = margin(b = 25, l = -25)),
+              plot.caption = element_text(size = 8, margin = margin(t = 10), color = "grey70", hjust = 0))
+  )
+  
+}
+
+# Load data
+respostas_docentes <- read_excel("planilhas/docentes-tema.xlsx", sheet="consolidados")
+respostas_tecnicos <- read_excel("planilhas/tecnicos-tema.xlsx", sheet="consolidados")
+
+respostas_docentes$nota <- CalcularNota(respostas_docentes)
+respostas_tecnicos$nota <- CalcularNota(respostas_tecnicos)
+
+respostas_docentes_presencial <- respostas_docentes[which(respostas_docentes$modalidade == "CODAI"),]
+respostas_tecnicos_presencial <- respostas_tecnicos[which(respostas_tecnicos$modalidade == "CODAI"),]
+
+```
+
+
+
+<script>
+<!-- this script activitates the popover functionality used for the OOR tooltip (Outras Opções de Resposta) -->
+$(document).ready(function(){
+    $('[data-toggle="popover"]').popover(); 
+});
+</script>
+
+
+
+
+
+<!-- início do documento propriamente dito -->
+Este relatório apresenta os resultados quantitativos da autoavaliação 2020 da Universidade Federal Rural de Pernambuco (UFRPE), conforme respondido pelos docentes e técnicos alocados no Colégio Agrícola Dom Agostinho Ikas (CODAI). A avaliação, conduzida pela Comissão Própria de Avaliação (CPA)
+da UFRPE, contemplou neste ano as Políticas Acadêmicas da instituição em cinco temáticas: políticas de ensino, de pesquisa, de extensão, de assistência estudantil, e também a comunicação institucional.
+
+Os questionários foram aplicados durante a pandemia causada pela Covid-19. De tal forma, toda mobilização e sensibilização para participação na autoavaliação foram virtuais, através das mídias sociais e dos e-mails institucionais. Assim, os resultados aqui apresentados refletem, também, esse momento vivido por toda comunidade universitária.  
+
+
+
+
+# Resultados da Avaliação das Políticas Acadêmicas (CODAI) <!-- {.tabset .tabset-pills} -->
+
+
+
+Esta seção apresenta os resultados referentes à avaliação das políticas acadêmicas da UFRPE, conforme respondido pelos integrantes do CODAI.
+
+A seguir são apresentados os resultados classificados por temática: ensino, pesquisa, extensão, assistência estudantil e comunicação institucional. Em cada temática, os resultados são separados por segmentos: docentes e técnicos. Essa separação é feita visto que as perguntas são diferentes para cada segmento. Em cada combinação temática/segmento, os resultados são apresentados em ordem decrescente de média.
+
+
+
+
+
+## Avaliação do Ensino (CODAI) {.cabecalho-destacado}
+
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Ensino")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre ensino.
+
+
+
+
+
+
+## Avaliação da Pesquisa (CODAI) {.cabecalho-destacado}
+
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Pesquisa")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+
+
+
+## Avaliação da Extensão (CODAI) {.cabecalho-destacado}
+
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Extensão")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+## Avaliação da Assistência Estudantil (CODAI) {.cabecalho-destacado}
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Assistência Estudantil")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+O questionário dos técnicos não contemplou perguntas sobre assistência estudantil.
+
+
+
+
+
+## Avaliação da Comunicação Institucional (CODAI) {.cabecalho-destacado}
+
+
+
+### Docentes
+
+```{r}
+CriarTabelaResultados(respostas_docentes_presencial, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+### Técnicos
+
+```{r}
+CriarTabelaResultados(respostas_tecnicos_presencial, "Comunicação")
+```
+
+*\*OOR: Outras opções de resposta. Para saber qual o texto da(s) respostas(s) de uma questão em específico, posicione o cursor do mouse sobre o valor correspondente na última coluna.*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
